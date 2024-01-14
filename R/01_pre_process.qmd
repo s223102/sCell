@@ -1,0 +1,220 @@
+---
+title: "pre_process"
+format: html
+editor: visual
+---
+
+# Load libraries
+
+```{r}
+library(Seurat)
+library(data.table)
+library(ggplot2)
+library(dplyr)
+library(BiocSingular)
+library(scDblFinder)
+library(SingleCellExperiment)
+library(SingleR)
+library(scater)
+```
+
+# Load data
+
+```{r}
+covid <- readRDS("~/scRNA/data/covid_nbt_main.rds")
+```
+
+```{r}
+covid <- UpdateSeuratObject(covid)
+```
+
+# 1. Explore data and subset
+
+```{r}
+covid
+```
+
+```{r}
+covid[[]]
+```
+
+```{r}
+unique(covid$severity)
+```
+
+```{r}
+covid_sub <- subset(covid, subset = severity == "control" | severity == "critical")
+covid_sub$severity <- factor(covid_sub$severity)
+```
+
+## UMIs per cell vs. Severity
+
+```{r}
+covid_sub[[]] |> 
+ggplot(aes(color= severity , x= nCount_RNA, fill=severity)) +
+geom_density(alpha = 0.2) +
+scale_x_log10() +
+theme_classic() +
+ylab("Cell density") +
+geom_vline(xintercept = 500)
+```
+
+The UMI counts per cell should generally be above 500
+
+```{r}
+covid_sub <- subset(covid_sub, subset = nCount_RNA > 500)
+```
+
+# 2. Quality Control
+
+1.  The number of unique genes detected in each cell.
+
+-   low-quality cells or empty droplets will often have very few genes
+
+-   cell doublets or multiplets may exhibit an aberrantly high gene count
+
+2.  The percentage of reads that map to the mitochondrial genome
+
+-   low-quality / dying cells often exhibit extensive mitochondrial contamination
+
+```{r}
+
+covid_sub[["percent.mt"]] <- PercentageFeatureSet(covid_sub, pattern = "^MT-")
+
+
+covid_sub <- PercentageFeatureSet(covid_sub, "^RP[SL]", col.name = "percent_ribo")
+```
+
+```{r}
+covid_sub[[]]
+```
+
+## Quality metrics
+
+Reset cell annotation
+
+```{r}
+Idents(covid_sub) <- "SeuratProject"
+```
+
+Visualize quality metrics
+
+```{r}
+
+VlnPlot(covid_sub, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent_ribo"), ncol = 4)
+```
+
+### Filter for quality metrics
+
+```{r}
+#covid_sub <- subset(covid_sub, 
+                    subset = nFeature_RNA > ???? &
+                      nFeature_RNA < ???? &
+                      percent.mt < ???)
+```
+
+## Genes constitute most of the UMIs in a single cell
+
+```{r}
+par(mar = c(4, 8, 2, 1))
+C <- covid_sub@assays$RNA@counts
+C <- Matrix::t(Matrix::t(C)/Matrix::colSums(C)) * 100
+most_expressed <- order(apply(C, 1, median), decreasing = T)[20:1]
+
+selected_genes <- t(as.matrix(C[most_expressed, ]))
+
+boxplot(as.matrix(t(C[most_expressed, ])), cex = 0.1, las = 1, xlab = "% total count per cell",
+  col = (scales::hue_pal())(20)[20:1], horizontal = TRUE)
+```
+
+### Filter for genes
+
+```{r}
+#covid_sub <- covid_sub[ ! grepl('^RP[SL]', rownames(pbmc.MTB)), ]
+```
+
+# 3. Normalization
+
+```{r}
+covid_sub <- NormalizeData(covid_sub, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+# 4. Identify Highly Variable Features
+
+```{r}
+covid_sub <- FindVariableFeatures(covid_sub, selection.method = "vst", nfeatures = 2000)
+```
+
+```{r}
+
+top10 <- head(VariableFeatures(covid_sub), 10)
+
+plot1 <- VariableFeaturePlot(covid_sub)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+```
+
+# 5. Scale data
+
+```{r}
+all.genes <- rownames(covid_sub)
+covid_sub <- ScaleData(covid_sub, features = all.genes)
+```
+
+# 6. Visualization
+
+```{r}
+covid_sub <- RunPCA(covid_sub, features = VariableFeatures(object = covid_sub))
+```
+
+```{r}
+ElbowPlot(covid_sub) 
+```
+
+```{r}
+covid_sub <- FindNeighbors(covid_sub, dims = 1:15)
+covid_sub<- FindClusters(covid_sub, resolution = c(0.3, 0.5, 0.7))
+```
+
+```{r}
+covid_sub <- RunUMAP(covid_sub, dims = 1:15)
+p1<- DimPlot(covid_sub, reduction = "umap")
+
+DimPlot(covid_sub, group.by = "RNA_snn_res.0.3", label = TRUE)
+```
+
+```{r}
+Idents(covid_sub) <- "RNA_snn_res.0.5"
+```
+
+# 7. Doublets
+
+```{r}
+
+sce <- as.SingleCellExperiment(covid_sub)
+
+top.var <- VariableFeatures(covid_sub)
+```
+
+```{r}
+dbl.dens <- computeDoubletDensity(sce, subset.row=top.var, 
+                                  d=ncol(reducedDim(sce)))
+summary(dbl.dens)
+```
+
+```{r}
+sce$DoubletScore <- dbl.dens
+plotUMAP(sce, colour_by="DoubletScore")
+```
+
+```{r}
+dbl.calls <- doubletThresholding(data.frame(score=dbl.dens),
+                                 method="griffiths", returnType="call")
+summary(dbl.calls)
+```
+
+# SAVE OBJECT
+
+```{r}
+saveRDS(covid_sub, "covid_sub")
+```
