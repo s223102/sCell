@@ -21,11 +21,54 @@ library(scater)
 # Load data
 
 ```{r}
-covid <- readRDS("~/scRNA/data/covid_nbt_main.rds")
+covid <- readRDS("../data/covid_sub10.rds")
+
 ```
 
 ```{r}
 covid <- UpdateSeuratObject(covid)
+```
+
+```{r}
+covid_sub10 <- covid
+```
+
+# RUN
+
+```{r}
+#Idents(object = covid) <- "severity"
+#covid_sub10 <- subset(covid, downsample = 10000)
+covid_sub10 <- subset(covid_sub10, subset = nCount_RNA > 500)
+covid_sub10[["percent.mt"]] <- PercentageFeatureSet(covid_sub10, pattern = "^MT-")
+covid_sub10 <- PercentageFeatureSet(covid_sub10, "^RP[SL]", col.name = "percent_ribo")
+```
+
+```{r}
+par(mar = c(4, 8, 2, 1))
+C <- covid_sub10@assays$RNA@counts
+C <- Matrix::t(Matrix::t(C)/Matrix::colSums(C)) * 100
+most_expressed <- order(apply(C, 1, median), decreasing = T)[20:1]
+
+selected_genes <- t(as.matrix(C[most_expressed, ]))
+
+```
+
+```{r}
+covid_sub10 <- covid_sub10[ ! grepl('^RP[SL]', rownames(covid_sub10)), ]
+```
+
+```{r}
+covid_sub10 <- NormalizeData(covid_sub10, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+```{r}
+covid_sub10 <- FindVariableFeatures(covid_sub10, selection.method = "vst", nfeatures = 2000)
+```
+
+```{r}
+#5.6 gb?
+all.genes <- rownames(covid_sub10)
+covid_sub10 <- ScaleData(covid_sub10, features = all.genes)
 ```
 
 # 1. Explore data and subset
@@ -39,6 +82,10 @@ covid[[]]
 ```
 
 ```{r}
+Cells(covid)
+```
+
+```{r}
 unique(covid$severity)
 ```
 
@@ -47,10 +94,38 @@ covid_sub <- subset(covid, subset = severity == "control" | severity == "critica
 covid_sub$severity <- factor(covid_sub$severity)
 ```
 
+```{r}
+Cells(covid_sub)
+```
+
+```{r}
+length(unique(covid_sub@active.ident))
+```
+
+```{r}
+Idents(object = covid) <- "severity"
+```
+
+```{r}
+covid@active.ident
+```
+
+```{r}
+covid_sub10 <- subset(covid, downsample = 10000)
+```
+
+```{r}
+length(covid_sub10$severity == "critical")
+```
+
+```{r}
+sum(covid_sub10$severity == "moderate")
+```
+
 ## UMIs per cell vs. Severity
 
 ```{r}
-covid_sub[[]] |> 
+covid_sub10[[]] |> 
 ggplot(aes(color= severity , x= nCount_RNA, fill=severity)) +
 geom_density(alpha = 0.2) +
 scale_x_log10() +
@@ -62,7 +137,7 @@ geom_vline(xintercept = 500)
 The UMI counts per cell should generally be above 500
 
 ```{r}
-covid_sub <- subset(covid_sub, subset = nCount_RNA > 500)
+covid_sub10 <- subset(covid_sub10, subset = nCount_RNA > 500)
 ```
 
 # 2. Quality Control
@@ -79,14 +154,14 @@ covid_sub <- subset(covid_sub, subset = nCount_RNA > 500)
 
 ```{r}
 
-covid_sub[["percent.mt"]] <- PercentageFeatureSet(covid_sub, pattern = "^MT-")
+covid_sub10[["percent.mt"]] <- PercentageFeatureSet(covid_sub10, pattern = "^MT-")
 
 
-covid_sub <- PercentageFeatureSet(covid_sub, "^RP[SL]", col.name = "percent_ribo")
+covid_sub10 <- PercentageFeatureSet(covid_sub10, "^RP[SL]", col.name = "percent_ribo")
 ```
 
 ```{r}
-covid_sub[[]]
+covid_sub10[[]]
 ```
 
 ## Quality metrics
@@ -101,7 +176,7 @@ Visualize quality metrics
 
 ```{r}
 
-VlnPlot(covid_sub, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent_ribo"), ncol = 4)
+VlnPlot(covid_sub10, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent_ribo"), ncol = 4)
 ```
 
 ### Filter for quality metrics
@@ -117,70 +192,91 @@ VlnPlot(covid_sub, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "per
 
 ```{r}
 par(mar = c(4, 8, 2, 1))
-C <- covid_sub@assays$RNA@counts
+C <- covid_sub10@assays$RNA@counts
 C <- Matrix::t(Matrix::t(C)/Matrix::colSums(C)) * 100
 most_expressed <- order(apply(C, 1, median), decreasing = T)[20:1]
 
 selected_genes <- t(as.matrix(C[most_expressed, ]))
 
-boxplot(as.matrix(t(C[most_expressed, ])), cex = 0.1, las = 1, xlab = "% total count per cell",
-  col = (scales::hue_pal())(20)[20:1], horizontal = TRUE)
+```
+
+```{r}
+boxplot(as.matrix(t(C[most_expressed, ])), cex = 0.1, las = 2, main = "% total count per cell",
+  col = (scales::hue_pal())(20)[20:1], horizontal = F)
+```
+
+```{r}
+colnames(t(C[most_expressed, ]))
+```
+
+```{r}
+
 ```
 
 ### Filter for genes
 
 ```{r}
-#covid_sub <- covid_sub[ ! grepl('^RP[SL]', rownames(pbmc.MTB)), ]
+covid_sub10 <- covid_sub10[ ! grepl('^RP[SL]', rownames(covid_sub10)), ]
 ```
 
 # 3. Normalization
 
 ```{r}
-covid_sub <- NormalizeData(covid_sub, normalization.method = "LogNormalize", scale.factor = 10000)
+covid_sub10 <- NormalizeData(covid_sub10, normalization.method = "LogNormalize", scale.factor = 10000)
 ```
 
 # 4. Identify Highly Variable Features
 
 ```{r}
-covid_sub <- FindVariableFeatures(covid_sub, selection.method = "vst", nfeatures = 2000)
+covid_sub10 <- FindVariableFeatures(covid_sub10, selection.method = "vst", nfeatures = 2000)
 ```
 
 ```{r}
 
-top10 <- head(VariableFeatures(covid_sub), 10)
+top10 <- head(VariableFeatures(covid_sub10), 10)
 
-plot1 <- VariableFeaturePlot(covid_sub)
-plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot1 <- VariableFeaturePlot(covid_sub10)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE, box.padding = 1, max.overlaps = Inf)
 plot2
+```
+
+```{r}
+covid_sub10@assays$RNA$scale.data |> glimpse()
 ```
 
 # 5. Scale data
 
 ```{r}
-all.genes <- rownames(covid_sub)
-covid_sub <- ScaleData(covid_sub, features = all.genes)
+all.genes <- rownames(covid_sub10)
+covid_sub10 <- ScaleData(covid_sub10, features = all.genes)
 ```
 
 # 6. Visualization
 
 ```{r}
-covid_sub <- RunPCA(covid_sub, features = VariableFeatures(object = covid_sub))
+covid_sub10 <- RunPCA(covid_sub10, features = VariableFeatures(object = covid_sub10))
 ```
 
 ```{r}
-ElbowPlot(covid_sub) 
+Cells(covid_sub10)
 ```
 
 ```{r}
-covid_sub <- FindNeighbors(covid_sub, dims = 1:15)
-covid_sub<- FindClusters(covid_sub, resolution = c(0.3, 0.5, 0.7))
+unique(covid_sub10$severity)
 ```
 
 ```{r}
-covid_sub <- RunUMAP(covid_sub, dims = 1:15)
-p1<- DimPlot(covid_sub, reduction = "umap")
+covid_sub10 <- FindNeighbors(covid_sub10, dims = 1:15)
+covid_sub10 <- FindClusters(covid_sub10, resolution = c(0.3, 0.5, 0.7))
+```
 
-DimPlot(covid_sub, group.by = "RNA_snn_res.0.3", label = TRUE)
+```{r}
+covid_sub10 <- RunUMAP(covid_sub10, dims = 1:15)
+p1<- DimPlot(covid_sub10, reduction = "umap")
+
+DimPlot(covid_sub10, group.by = "RNA_snn_res.0.7", label = TRUE)
+DimPlot(covid_sub10, group.by = "RNA_snn_res.0.5", label = TRUE)
+DimPlot(covid_sub10, group.by = "RNA_snn_res.0.3", label = TRUE)
 ```
 
 ```{r}
@@ -191,9 +287,9 @@ Idents(covid_sub) <- "RNA_snn_res.0.5"
 
 ```{r}
 
-sce <- as.SingleCellExperiment(covid_sub)
+sce <- as.SingleCellExperiment(covid_sub10)
 
-top.var <- VariableFeatures(covid_sub)
+top.var <- VariableFeatures(covid_sub10)
 ```
 
 ```{r}
@@ -216,5 +312,65 @@ summary(dbl.calls)
 # SAVE OBJECT
 
 ```{r}
-saveRDS(covid_sub, "covid_sub")
+saveRDS(covid_sub10, "covid_pre.rds")
+```
+
+# 8. Integration
+
+```{r}
+#initial umap - before integration
+DimPlot(covid_sub10, reduction = 'umap', split.by = 'severity')
+```
+
+```{r}
+# split data set based on severity
+covid_sub10_split<- SplitObject(covid_sub10, split.by = "severity")
+
+```
+
+```{r}
+# normalize and identify variable features for each dataset independently
+covid_sub10_split <- lapply(X = covid_sub10_split, FUN = function(x) {
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
+})
+
+# select features that are repeatedly variable across datasets for integration run PCA on each dataset using these features
+features <- SelectIntegrationFeatures(object.list = covid_sub10_split)
+
+```
+
+```{r}
+#
+#library(future)
+#plan("multisession", workers = 4)
+#options(future.globals.maxSize = 8000 * 1024^2)
+
+#find integration anchors
+severity.anchors <- FindIntegrationAnchors(object.list = covid_sub10_split, anchor.features = features)
+
+severity.combined <- IntegrateData(anchorset = severity.anchors)
+
+DefaultAssay(severity.combined) <- "integrated"
+```
+
+```{r}
+#check integration looks good
+
+severity.combined <- ScaleData(severity.combined, verbose = FALSE)
+severity.combined <- RunPCA(severity.combined, npcs = 30, verbose = FALSE)
+ElbowPlot(severity.combined) #15 PCs
+severity.combined <- RunUMAP(severity.combined, reduction = "pca", dims = 1:15)
+severity.combined <- FindNeighbors(severity.combined, reduction = "pca", dims = 1:15)
+severity.combined <- FindClusters(severity.combined, resolution = 0.1)
+severity.combined <- FindClusters(severity.combined, resolution = 0.3)
+severity.combined <- FindClusters(severity.combined, resolution = 0.5)
+severity.combined <- FindClusters(severity.combined, resolution = 0.7)
+```
+
+```{r}
+#visualise
+Idents(severity.combined) <- "integrated_snn_res.0.3"
+DimPlot(severity.combined, reduction = "umap", split.by = "severity")
+
 ```
