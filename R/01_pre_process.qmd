@@ -357,6 +357,9 @@ DefaultAssay(severity.combined) <- "integrated"
 ```{r}
 #check integration looks good
 
+#load severity.combined.rds
+#severity.combined <- readRDS("data/severity.combined.rds")
+
 severity.combined <- ScaleData(severity.combined, verbose = FALSE)
 severity.combined <- RunPCA(severity.combined, npcs = 30, verbose = FALSE)
 ElbowPlot(severity.combined) #15 PCs
@@ -369,8 +372,12 @@ severity.combined <- FindClusters(severity.combined, resolution = 0.7)
 ```
 
 ```{r}
-#visualise
-Idents(severity.combined) <- "integrated_snn_res.0.3"
+#visualise - which is the good resolution?
+Idents(severity.combined) <- "integrated_snn_res.0.3" # modify number here
 DimPlot(severity.combined, reduction = "umap", split.by = "severity")
 
+```
+
+```{r}
+saveRDS(severity.combined, "severity.combined.rds")
 ```
