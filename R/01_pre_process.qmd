@@ -355,6 +355,10 @@ DefaultAssay(severity.combined) <- "integrated"
 ```
 
 ```{r}
+severity.combined <- readRDS("../data/serverity.integrated.rds")
+```
+
+```{r}
 #check integration looks good
 
 #load severity.combined.rds
@@ -372,12 +376,79 @@ severity.combined <- FindClusters(severity.combined, resolution = 0.7)
 ```
 
 ```{r}
+severity.combined <- FindClusters(severity.combined, resolution = 0.6)
+```
+
+```{r}
 #visualise - which is the good resolution?
-Idents(severity.combined) <- "integrated_snn_res.0.3" # modify number here
+Idents(severity.combined) <- "integrated_snn_res.0.5" # modify number here
 DimPlot(severity.combined, reduction = "umap", split.by = "severity")
 
 ```
 
 ```{r}
+library(clustree)
+# integrated_snn_res.0.1 to 0.7 correspond to the different clustering resolutions
+
+clustree(severity.combined, prefix = "integrated_snn_res.")
+```
+
+```{r}
+unique(severity.combined$celltype)
+```
+
+```{r}
+metrics <-  c("nCount_RNA", "nFeature_RNA", "percent.mt")
+
+FeaturePlot(severity.combined, 
+            reduction = "umap", 
+            features = metrics,
+            pt.size = 0.4, 
+            order = TRUE,
+            min.cutoff = 'q10',
+            label = TRUE)
+```
+
+```{r}
 saveRDS(severity.combined, "severity.combined.rds")
+```
+
+# 9. Cell type
+
+```{r}
+Idents(severity.combined) <- "integrated_snn_res.0.5"
+```
+
+```{r}
+library(SingleR)
+```
+
+```{r}
+library(celldex)
+```
+
+```{r}
+
+hpca <- HumanPrimaryCellAtlasData()
+
+ref <- as.SingleCellExperiment(hpca, assay = "RNA")
+
+counts <- GetAssayData(severity.combined, assay = "RNA", layer = 'counts')
+
+pred <- SingleR(test = counts,
+                ref = hpca,
+                labels = hpca$label.main,
+                de.method="wilcox")
+
+severity.combined$celltype_2 <- pred$labels[match(rownames(severity.combined@meta.data), rownames(pred))]
+
+DimPlot(severity.combined, reduction = 'umap', group.by = 'celltype')
+```
+
+```{r}
+severity.combined[[]]
+```
+
+```{r}
+saveRDS(severity.combined, "severity.anno.rds")
 ```
