@@ -355,7 +355,7 @@ DefaultAssay(severity.combined) <- "integrated"
 ```
 
 ```{r}
-severity.combined <- readRDS("../data/serverity.integrated.rds")
+severity.combined <- readRDS("../data/severity.combined.rds")
 ```
 
 ```{r}
@@ -451,4 +451,18 @@ severity.combined[[]]
 
 ```{r}
 saveRDS(severity.combined, "severity.anno.rds")
+
+
+severity.combined <- readRDS("se")
+```
+
+```{r}
+severity.combined <- severity.combined@meta.data
+
+# Create a vector specifying cell type categories
+cell_categories <- ifelse(severity.combined@meta.data$celltype %in% c("Basal", "Ciliated-diff", "Ciliated", "FOXN4", "Ionocyte", "IRC", "Secretory-diff", "Secretory", "Squamous", "unknown_epithelial"), "epithelial cells", "immune cells")
+
+# Add the new metadata column to the Seurat object
+severity.combined <- AddMetaData(object = severity.combined, metadata = cell_categories, col.name = "cell_category")
+
 ```
