@@ -1,0 +1,90 @@
+---
+title: "Trajectory analysis"
+format: html
+editor: visual
+---
+
+Loadings data
+
+```{r}
+library(Seurat)
+library(data.table)
+library(ggplot2)
+library(dplyr)
+library(BiocSingular)
+library(scDblFinder)
+library(SingleCellExperiment)
+library(SingleR)
+library(scater)
+library(slingshot)
+
+
+```
+
+## Trajectory Analysis
+
+```{r}
+
+severity.combined <- readRDS(file = "../severity.combined.rds")
+
+# Create a vector specifying cell type categories
+severity.combined@meta.data$cell_class <- ifelse(severity.combined@meta.data$celltype %in% c("Basal", "Ciliated-diff", "Ciliated", "FOXN4", "Ionocyte", "IRC", "Secretory-diff", "Secretory", "Squamous", "unknown_epithelial","outliers_epithelial"), "epithelial cells", "immune cells")
+
+# Add the new metadata column to the Seurat object
+severity.combined_immune_moderate <- subset(x = severity.combined, subset = cell_class == "immune cells" & severity == "moderate") 
+
+severity.combined_immune_critical <- subset(x = severity.combined, subset = cell_class == "immune cells" & severity == "critical") 
+
+severity.combined_epithel_moderate <- subset(x = severity.combined, subset = cell_class == "epithelial cells" & severity == "moderate") 
+
+severity.combined_epithel_critical <- subset(x = severity.combined, subset = cell_class == "epithelial cells" & severity == "critical") 
+
+#saveRDS(severity.combined_immune, "severity.combined_immune.RDS")
+#saveRDS(severity.combined_epithel, "severity.combined_epithel.RDS")
+```
+
+# Preprocessing for immune cells
+
+```{r}
+data <- severity.combined
+data <- FindVariableFeatures(data)
+data <- ScaleData(data)
+data <- RunPCA(data)
+data <- FindNeighbors(data)
+data <- FindClusters(data, resolution = 0.6)
+data <- RunUMAP(data)
+DimPlot(data, group.by = "integrated_snn_res.0.6",label = T)
+
+
+```
+
+```{r}
+pal <- c(RColorBrewer::brewer.pal(9, "Set1"), RColorBrewer::brewer.pal(8, "Set2"))
+dimred <- data@reductions$umap@cell.embeddings
+clustering <- data@meta.data$celltype %>% as.factor() 
+counts <- as.matrix(data@assays$RNA@counts[data@assays$RNA@var.features, ])
+
+lineages <- getLineages(dimred, clusterLabels = clustering)
+```
+
+```{r}
+par(mfrow = c(1, 2))
+plot(dimred[, 1:2], col = pal[clustering], cex = 0.5, pch = 16, xlim = c(-20,20))
+title(main = "UMAP")
+for (i in levels(clustering)) {
+    text(mean(dimred[clustering == i, 1]), mean(dimred[clustering == i, 2]), labels = i, font = 2,cex = 0.4)
+}
+
+curves <- getCurves(SlingshotDataSet(lineages), approx_points = 300, thresh = 0.01, stretch = 0.8, allow.breaks = FALSE, shrink = 0.99)
+
+plot(dimred, col = pal[clustering], asp = 1, pch = 16)
+title(main = "Trajectory")
+lines(SlingshotDataSet(curves), lwd = 3, col = "black")
+
+```
+
+```{r}
+curves <- getCurves(SlingshotDataSet(lineages), approx_points = 300, thresh = 0.01, stretch = 0.8, allow.breaks = FALSE, shrink = 0.99)
+
+
+```
